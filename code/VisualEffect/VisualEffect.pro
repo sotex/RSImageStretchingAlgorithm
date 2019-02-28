@@ -39,9 +39,9 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 unix:!macx {
     INCLUDEPATH += $$PWD/3rd/gdal/include
-    LIBS += -L$$PWD/3rd/gdal/lib/vs140-x64/ -lgdal_i
+    LIBS += -L$$PWD -lgdal_i
 }
 win32 {
     INCLUDEPATH += D:/work_code/unispace_library/3rd/gdal/include
-    LIBS += -LD:/work_code/unispace_library/3rd/gdal/lib/vs140-x64/ -lgdal_i
+    LIBS += -L$$PWD/../../ -lgdal_i
 }
