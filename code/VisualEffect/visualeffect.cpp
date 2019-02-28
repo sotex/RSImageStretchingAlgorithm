@@ -46,6 +46,7 @@ VisualEffect::VisualEffect(QWidget *parent)
     pHLayout2->addWidget(pSBoxR);
     pHLayout2->addWidget(pSBoxG);
     pHLayout2->addWidget(pSBoxB);
+    pHLayout2->addStretch();
     pHLayout2->addWidget(pCBox);
 
 
@@ -113,18 +114,18 @@ VisualEffect::VisualEffect(QWidget *parent)
 
     // 刷新显示按钮单击处理
     connect(pBtnUpdate,&QPushButton::clicked,[=](){
-        int nBands = this->property("nBands").toInt();
-        int nXSize = this->property("nXSize").toInt();
-        int nYSize = this->property("nYSize").toInt();
+        const int nBands = this->property("nBands").toInt();
+        const int nXSize = this->property("nXSize").toInt();
+        const int nYSize = this->property("nYSize").toInt();
         QByteArray buffer = this->property("buffer").toByteArray();
         if(nBands == 0 || nXSize == 0 || nYSize == 0
                 || buffer.isEmpty()){
             return;
         }
         const double* pBuffer = reinterpret_cast<const double*>(buffer.data());
-        int iRBand = pSBoxR->value();
-        int iGBand = pSBoxG->value();
-        int iBBand = pSBoxB->value();
+        const int iRBand = pSBoxR->value();
+        const int iGBand = pSBoxG->value();
+        const int iBBand = pSBoxB->value();
         const double* pRBuffer = pBuffer + (nXSize*nYSize*(iRBand-1));
         const double* pGBuffer = pBuffer + (nXSize*nYSize*(iGBand-1));
         const double* pBBuffer = pBuffer + (nXSize*nYSize*(iBBand-1));
@@ -146,21 +147,44 @@ VisualEffect::VisualEffect(QWidget *parent)
 
         {
             // 统计三个波段的最大最小值
-            auto mimmaxpair = std::minmax_element(pRBuffer,pRBuffer+(nXSize*nYSize));
-            const double dfRMin = *mimmaxpair.first; const double dfRMax = *mimmaxpair.second;
-            mimmaxpair = std::minmax_element(pGBuffer,pGBuffer+(nXSize*nYSize));
-            const double dfGMin = *mimmaxpair.first; const double dfGMax = *mimmaxpair.second;
-            mimmaxpair = std::minmax_element(pBBuffer,pBBuffer+(nXSize*nYSize));
-            const double dfBMin = *mimmaxpair.first; const double dfBMax = *mimmaxpair.second;
+            // auto mimmaxpair = std::minmax_element(pRBuffer,pRBuffer+(nXSize*nYSize));
+            // const double dfRMin = *mimmaxpair.first; const double dfRMax = *mimmaxpair.second;
+            // mimmaxpair = std::minmax_element(pGBuffer,pGBuffer+(nXSize*nYSize));
+            // const double dfGMin = *mimmaxpair.first; const double dfGMax = *mimmaxpair.second;
+            // mimmaxpair = std::minmax_element(pBBuffer,pBBuffer+(nXSize*nYSize));
+            // const double dfBMin = *mimmaxpair.first; const double dfBMax = *mimmaxpair.second;
 
-            QImage image(nXSize,nYSize,QImage::Format_RGB888);
+            // 不包括无效值0 统计最大最小值
+            double dfRMin = DBL_MAX,dfGMin = DBL_MAX,dfBMin = DBL_MAX;
+            double dfRMax = -DBL_MAX,dfGMax = -DBL_MAX,dfBMax = -DBL_MAX;
+            for(int i=0;i<nXSize*nYSize;++i){
+                double v = pRBuffer[i];
+                if(v != 0.0){ dfRMin = std::min(dfRMin,v); dfRMax = std::max(dfRMax,v); }
+                v = pGBuffer[i];
+                if(v != 0.0){ dfGMin = std::min(dfRMin,v); dfGMax = std::max(dfRMax,v); }
+                v = pBBuffer[i];
+                if(v != 0.0){ dfBMin = std::min(dfRMin,v); dfBMax = std::max(dfRMax,v); }
+            }
+
+            QImage image(nXSize,nYSize,QImage::Format_RGBA8888);
             uchar* pOut = image.bits();
             for(int y = 0;y<nYSize;++y){
                 for(int x=0; x<nXSize;++x){
-                    uchar* pPixel = pOut + (y*nXSize+x)*3;
-                    pPixel[0] = static_cast<uchar>((pRBuffer[y*nXSize+x] -dfRMin)/(dfRMax-dfRMin) *255.0);
-                    pPixel[1] = static_cast<uchar>((pGBuffer[y*nXSize+x] -dfGMin)/(dfGMax-dfGMin) *255.0);
-                    pPixel[2] = static_cast<uchar>((pBBuffer[y*nXSize+x] -dfBMin)/(dfBMax-dfBMin) *255.0);
+                    uchar* pPixel = pOut + (y*nXSize+x)*4;
+
+                    double valueR = pRBuffer[y*nXSize+x];
+                    double valueG = pGBuffer[y*nXSize+x];
+                    double valueB = pBBuffer[y*nXSize+x];
+                    // 判断是否是无效像素
+                    if(valueR == 0.0 && valueG == 0.0 && valueB == 0.0){
+                        pPixel[3] = 0.0; continue;
+                    }
+
+                    // 这里应该考虑无效值0与最小值相减为负数的情况
+                    pPixel[0] = static_cast<uchar>((valueR -dfRMin)/(dfRMax-dfRMin) *255.0);
+                    pPixel[1] = static_cast<uchar>((valueG -dfGMin)/(dfGMax-dfGMin) *255.0);
+                    pPixel[2] = static_cast<uchar>((valueB -dfBMin)/(dfBMax-dfBMin) *255.0);
+                    pPixel[3] = 255;
                     // limage.setPixelColor(x,y,QColor(r,g,b));
                 }
             }
