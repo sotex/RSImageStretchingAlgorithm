@@ -41,7 +41,11 @@ unix:!macx {
     INCLUDEPATH += $$PWD/3rd/gdal/include
     LIBS += -L$$PWD -lgdal_i
 }
-win32 {
+else:win32-g++ {
+    INCLUDEPATH += C:/msys64/mingw64/inlude
+    LIBS += -L/mingw64/lib/ -lgdal
+}
+else:win32:!win32-g++ {
     INCLUDEPATH += D:/work_code/unispace_library/3rd/gdal/include
     LIBS += -L$$PWD/../../ -lgdal_i
 }
