@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cfloat>
 
 
 VisualEffect::VisualEffect(QWidget *parent)
@@ -114,6 +115,7 @@ VisualEffect::VisualEffect(QWidget *parent)
 
     // 刷新显示按钮单击处理
     connect(pBtnUpdate,&QPushButton::clicked,[=](){
+        QString Alg = pCBox->currentText();
         const int nBands = this->property("nBands").toInt();
         const int nXSize = this->property("nXSize").toInt();
         const int nYSize = this->property("nYSize").toInt();
@@ -157,35 +159,77 @@ VisualEffect::VisualEffect(QWidget *parent)
             // 不包括无效值0 统计最大最小值
             double dfRMin = DBL_MAX,dfGMin = DBL_MAX,dfBMin = DBL_MAX;
             double dfRMax = -DBL_MAX,dfGMax = -DBL_MAX,dfBMax = -DBL_MAX;
+            // 统计有效像素个数(至少有一个波段不为0)，累计值
+            double dfRSum = 0.0, dfGSum = 0.0, dfBSum = 0.0;
+            size_t nPixelCount = 0;
             for(int i=0;i<nXSize*nYSize;++i){
                 double v = pRBuffer[i];
+                double isValid = v; dfRSum += v;
                 if(v != 0.0){ dfRMin = std::min(dfRMin,v); dfRMax = std::max(dfRMax,v); }
+
                 v = pGBuffer[i];
+                dfGSum += v; isValid = (v != 0? v:isValid);
                 if(v != 0.0){ dfGMin = std::min(dfRMin,v); dfGMax = std::max(dfRMax,v); }
+
                 v = pBBuffer[i];
+                dfBSum += v; isValid = (v != 0? v:isValid);
                 if(v != 0.0){ dfBMin = std::min(dfRMin,v); dfBMax = std::max(dfRMax,v); }
+
+                if(isValid){ nPixelCount += 1; }
             }
 
             QImage image(nXSize,nYSize,QImage::Format_RGBA8888);
             uchar* pOut = image.bits();
-            for(int y = 0;y<nYSize;++y){
-                for(int x=0; x<nXSize;++x){
-                    uchar* pPixel = pOut + (y*nXSize+x)*4;
 
-                    double valueR = pRBuffer[y*nXSize+x];
-                    double valueG = pGBuffer[y*nXSize+x];
-                    double valueB = pBBuffer[y*nXSize+x];
-                    // 判断是否是无效像素
-                    if(valueR == 0.0 && valueG == 0.0 && valueB == 0.0){
-                        pPixel[3] = 0.0; continue;
+            if(Alg == QStringLiteral("线性拉伸")) {
+                for(int y = 0;y<nYSize;++y){
+                    for(int x=0; x<nXSize;++x){
+                        uchar* pPixel = pOut + (y*nXSize+x)*4;
+
+                        double valueR = pRBuffer[y*nXSize+x];
+                        double valueG = pGBuffer[y*nXSize+x];
+                        double valueB = pBBuffer[y*nXSize+x];
+                        // 判断是否是无效像素
+                        if(valueR == 0.0 && valueG == 0.0 && valueB == 0.0){
+                            pPixel[3] = 0.0; continue;
+                        }
+
+                        // 0-255线性映射到[最小值,最大值]。
+                        pPixel[0] = static_cast<uchar>((valueR -dfRMin)/(dfRMax-dfRMin) *255.0);
+                        pPixel[1] = static_cast<uchar>((valueG -dfGMin)/(dfGMax-dfGMin) *255.0);
+                        pPixel[2] = static_cast<uchar>((valueB -dfBMin)/(dfBMax-dfBMin) *255.0);
+                        pPixel[3] = 255;
+                        // limage.setPixelColor(x,y,QColor(r,g,b));
                     }
+                }
+            }
+            else if(Alg == QStringLiteral("2%线性拉伸")) {
+                double diff = dfRMax-dfRMin;
+                dfRMin += diff * 0.10; dfRMax -= diff * 0.10;
+                diff = dfGMax-dfGMin;
+                dfGMin += diff * 0.10; dfGMax -= diff * 0.10;
+                diff = dfBMax-dfBMin;
+                dfBMin += diff * 0.10; dfBMax -= diff * 0.10;
 
-                    // 这里应该考虑无效值0与最小值相减为负数的情况
-                    pPixel[0] = static_cast<uchar>((valueR -dfRMin)/(dfRMax-dfRMin) *255.0);
-                    pPixel[1] = static_cast<uchar>((valueG -dfGMin)/(dfGMax-dfGMin) *255.0);
-                    pPixel[2] = static_cast<uchar>((valueB -dfBMin)/(dfBMax-dfBMin) *255.0);
-                    pPixel[3] = 255;
-                    // limage.setPixelColor(x,y,QColor(r,g,b));
+                for(int y = 0;y<nYSize;++y){
+                    for(int x=0; x<nXSize;++x){
+                        uchar* pPixel = pOut + (y*nXSize+x)*4;
+
+                        double valueR = pRBuffer[y*nXSize+x];
+                        double valueG = pGBuffer[y*nXSize+x];
+                        double valueB = pBBuffer[y*nXSize+x];
+                        // 判断是否是无效像素
+                        if(valueR == 0.0 && valueG == 0.0 && valueB == 0.0){
+                            pPixel[3] = 0.0; continue;
+                        }
+                        // 相当于0-255线性映射到[最小值+2%,最大值-%2]
+                        // 这里应该考虑像素值与最小值相减为负数的情况，已经映射值超过255的情况
+                        pPixel[0] = static_cast<uchar>(std::min(255.0,(std::max((valueR -dfRMin),0.0)/(dfRMax-dfRMin) *255.0)));
+                        pPixel[1] = static_cast<uchar>(std::min(255.0,(std::max((valueG -dfGMin),0.0)/(dfGMax-dfGMin) *255.0)));
+                        pPixel[2] = static_cast<uchar>(std::min(255.0,(std::max((valueB -dfBMin),0.0)/(dfBMax-dfBMin) *255.0)));
+                        pPixel[3] = 255;
+                        // limage.setPixelColor(x,y,QColor(r,g,b));
+                    }
                 }
             }
             pLab2->setPixmap(QPixmap::fromImage(image.scaledToWidth(640)));
