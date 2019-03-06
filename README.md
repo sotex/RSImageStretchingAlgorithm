@@ -8,4 +8,6 @@
 - [遥感图像处理（图像显示与拉伸）](http://blog.sina.com.cn/s/blog_80a9926b0101dgen.html)
 - [遥感图像增强方法应用](https://blog.csdn.net/happmaoo/article/details/83196756)
 - [【栅格】遥感数字图像显示和拉伸（笔记）](https://blog.csdn.net/gislaozhang/article/details/82919042)
+- [Histogram Specification(直方图规定化)](http://fourier.eng.hmc.edu/e161/lectures/contrast_transform/node3.html)
+- [Histogram Equalization(直方图均衡化)](http://fourier.eng.hmc.edu/e161/lectures/contrast_transform/node2.html)
 - [doc/遥感数字图像处理.pdf](doc/遥感数字图像处理.pdf)

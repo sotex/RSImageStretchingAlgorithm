@@ -18,6 +18,15 @@
 #include <cmath>
 #include <cfloat>
 
+namespace std
+{
+template<typename T>
+inline T clamp(T minval, T val, T maxval)
+{
+    return (minval > val)? minval : (maxval < val)? maxval: val;
+}
+}
+
 
 VisualEffect::VisualEffect(QWidget *parent)
     : QWidget(parent)
@@ -40,7 +49,9 @@ VisualEffect::VisualEffect(QWidget *parent)
     QSpinBox* pSBoxB = new QSpinBox(this);
 
     QComboBox* pCBox = new QComboBox(this);
-    pCBox->addItems({QStringLiteral("线性拉伸"),QStringLiteral("2%线性拉伸")});
+    pCBox->addItems({QStringLiteral("线性拉伸"),
+                     QStringLiteral("2%线性拉伸"),
+                     QStringLiteral("直方图均衡化")});
 
     QHBoxLayout* pHLayout2 = new QHBoxLayout;
     pHLayout2->addWidget(pLab);
@@ -174,7 +185,7 @@ VisualEffect::VisualEffect(QWidget *parent)
                 v = pBBuffer[i];
                 dfBSum += v; isValid = (v != 0? v:isValid);
                 if(v != 0.0){ dfBMin = std::min(dfRMin,v); dfBMax = std::max(dfRMax,v); }
-
+                // 三个都为0，才认为像素无效
                 if(isValid){ nPixelCount += 1; }
             }
 
@@ -229,6 +240,56 @@ VisualEffect::VisualEffect(QWidget *parent)
                         pPixel[2] = static_cast<uchar>(std::min(255.0,(std::max((valueB -dfBMin),0.0)/(dfBMax-dfBMin) *255.0)));
                         pPixel[3] = 255;
                         // limage.setPixelColor(x,y,QColor(r,g,b));
+                    }
+                }
+            }
+            else if(Alg == QStringLiteral("直方图均衡化")){
+                // 计算直方图，将RGB各个波段在最大最小值之间分为1024个灰度级进行统计
+                std::vector<double> histogramR(1024,0);
+                std::vector<double> histogramG(1024,0);
+                std::vector<double> histogramB(1024,0);
+                for(int i=0;i<nXSize*nYSize;++i){
+                    double valueR = pRBuffer[i];
+                    double valueG = pGBuffer[i];
+                    double valueB = pBBuffer[i];
+                    if(valueR !=0.0 || valueG != 0.0 || valueB != 0.0){
+                        histogramR[std::clamp<int>(0,((valueR-dfRMin)*1024/(dfRMax-dfRMin)),1023)] += 1;
+                        histogramG[std::clamp<int>(0,((valueG-dfGMin)*1024/(dfGMax-dfGMin)),1023)] += 1;
+                        histogramB[std::clamp<int>(0,((valueB-dfBMin)*1024/(dfGMax-dfBMin)),1023)] += 1;
+                    }
+                }
+                // 下面两个计算可以合二为一
+                // 计算为概率值
+                double factor = 1.0/nPixelCount;
+                for(size_t i=0;i<1024;++i){
+                    histogramR[i] *= factor;
+                    histogramG[i] *= factor;
+                    histogramB[i] *= factor;
+                }
+                // 计算颜色表(计算1024个灰度级别，按出现概率映射的0-255的值)
+                // 颜色值重新映射后再计算直方图，应该每个像素值出现的概率是相同的
+                double cdfR = 0, cdfB = 0, cdfG = 0;
+                for(size_t i=0;i<1024;++i){
+                    cdfR += histogramR[i]; histogramR[i] = cdfR*255;
+                    cdfG += histogramG[i]; histogramG[i] = cdfG*255;
+                    cdfB += histogramB[i]; histogramB[i] = cdfB*255;
+                }
+                // 输出RGBA图像
+                for(int y = 0;y<nYSize;++y){
+                    for(int x=0; x<nXSize;++x){
+                        uchar* pPixel = pOut + (y*nXSize+x)*4;
+
+                        double valueR = pRBuffer[y*nXSize+x];
+                        double valueG = pGBuffer[y*nXSize+x];
+                        double valueB = pBBuffer[y*nXSize+x];
+                        // 判断是否是无效像素
+                        if(valueR == 0.0 && valueG == 0.0 && valueB == 0.0){
+                            pPixel[3] = 0.0; continue;
+                        }
+                        pPixel[0] = static_cast<uchar>(histogramR[std::clamp<int>(0,((valueR-dfRMin)*1024/(dfRMax-dfRMin)),1023)]);
+                        pPixel[1] = static_cast<uchar>(histogramG[std::clamp<int>(0,((valueG-dfGMin)*1024/(dfGMax-dfGMin)),1023)]);
+                        pPixel[2] = static_cast<uchar>(histogramB[std::clamp<int>(0,((valueB-dfBMin)*1024/(dfGMax-dfBMin)),1023)]);
+                        pPixel[3] = 255;
                     }
                 }
             }
