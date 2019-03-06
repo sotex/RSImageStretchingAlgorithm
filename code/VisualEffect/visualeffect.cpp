@@ -269,10 +269,13 @@ VisualEffect::VisualEffect(QWidget *parent)
                 // 计算颜色表(计算1024个灰度级别，按出现概率映射的0-255的值)
                 // 颜色值重新映射后再计算直方图，应该每个像素值出现的概率是相同的
                 double cdfR = 0, cdfB = 0, cdfG = 0;
+                std::vector<uchar> cltR(1024,0);    // color lookup table
+                std::vector<uchar> cltG(1024,0);
+                std::vector<uchar> cltB(1024,0);
                 for(size_t i=0;i<1024;++i){
-                    cdfR += histogramR[i]; histogramR[i] = cdfR*255;
-                    cdfG += histogramG[i]; histogramG[i] = cdfG*255;
-                    cdfB += histogramB[i]; histogramB[i] = cdfB*255;
+                    cdfR += histogramR[i]; cltR[i] = static_cast<uchar>(cdfR*255);
+                    cdfG += histogramG[i]; cltG[i] = static_cast<uchar>(cdfG*255);
+                    cdfB += histogramB[i]; cltB[i] = static_cast<uchar>(cdfB*255);
                 }
                 // 输出RGBA图像
                 for(int y = 0;y<nYSize;++y){
@@ -286,9 +289,9 @@ VisualEffect::VisualEffect(QWidget *parent)
                         if(valueR == 0.0 && valueG == 0.0 && valueB == 0.0){
                             pPixel[3] = 0.0; continue;
                         }
-                        pPixel[0] = static_cast<uchar>(histogramR[std::clamp<int>(0,((valueR-dfRMin)*1024/(dfRMax-dfRMin)),1023)]);
-                        pPixel[1] = static_cast<uchar>(histogramG[std::clamp<int>(0,((valueG-dfGMin)*1024/(dfGMax-dfGMin)),1023)]);
-                        pPixel[2] = static_cast<uchar>(histogramB[std::clamp<int>(0,((valueB-dfBMin)*1024/(dfGMax-dfBMin)),1023)]);
+                        pPixel[0] = cltR[std::clamp<int>(0,((valueR-dfRMin)*1024/(dfRMax-dfRMin)),1023)];
+                        pPixel[1] = cltG[std::clamp<int>(0,((valueG-dfGMin)*1024/(dfGMax-dfGMin)),1023)];
+                        pPixel[2] = cltB[std::clamp<int>(0,((valueB-dfBMin)*1024/(dfGMax-dfBMin)),1023)];
                         pPixel[3] = 255;
                     }
                 }
