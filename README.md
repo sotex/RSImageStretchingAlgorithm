@@ -10,4 +10,6 @@
 - [【栅格】遥感数字图像显示和拉伸（笔记）](https://blog.csdn.net/gislaozhang/article/details/82919042)
 - [Histogram Specification(直方图规定化)](http://fourier.eng.hmc.edu/e161/lectures/contrast_transform/node3.html)
 - [Histogram Equalization(直方图均衡化)](http://fourier.eng.hmc.edu/e161/lectures/contrast_transform/node2.html)
+- [标准差- MBA智库百科](https://wiki.mbalib.com/wiki/%E6%A0%87%E5%87%86%E5%B7%AE)
+- [高斯分布概率密度函数（PDF）和累积分布函数(CDF)](https://blog.csdn.net/renwudao24/article/details/44465407)
 - [doc/遥感数字图像处理.pdf](doc/遥感数字图像处理.pdf)

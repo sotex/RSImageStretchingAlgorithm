@@ -18,6 +18,10 @@
 #include <cmath>
 #include <cfloat>
 
+#ifndef PI
+#define PI 3.141592653589793
+#endif
+
 namespace std
 {
 template<typename T>
@@ -25,6 +29,22 @@ inline T clamp(T minval, T val, T maxval)
 {
     return (minval > val)? minval : (maxval < val)? maxval: val;
 }
+
+// 标准正态分布函数
+// 期望值μ=0，即曲线图象对称轴为Y轴，标准差σ=1条件下的正态分布
+double stdnormpdf(double x)
+{
+  return( (1.0 / sqrt(2.0 * PI))*exp(-0.5*x*x));
+}
+
+// 正态分布概率密度函数
+// mu    数学期望(平均值)
+// sigma 标准差
+double normpdf(double x, double mu, double sigma)
+{
+  return( (1.0 /(sigma *  sqrt(2.0 * PI))) * exp( -1 * (x-mu)*(x-mu)/(2*sigma*sigma)));
+}
+
 }
 
 
@@ -51,7 +71,8 @@ VisualEffect::VisualEffect(QWidget *parent)
     QComboBox* pCBox = new QComboBox(this);
     pCBox->addItems({QStringLiteral("线性拉伸"),
                      QStringLiteral("2%线性拉伸"),
-                     QStringLiteral("直方图均衡化")});
+                     QStringLiteral("直方图均衡化"),
+                     QStringLiteral("直方图规定化(正态分布)")});
 
     QHBoxLayout* pHLayout2 = new QHBoxLayout;
     pHLayout2->addWidget(pLab);
@@ -268,6 +289,67 @@ VisualEffect::VisualEffect(QWidget *parent)
                 }
                 // 计算颜色表(计算1024个灰度级别，按出现概率映射的0-255的值)
                 // 颜色值重新映射后再计算直方图，应该每个像素值出现的概率是相同的
+                double cdfR = 0, cdfB = 0, cdfG = 0;
+                std::vector<uchar> cltR(1024,0);    // color lookup table
+                std::vector<uchar> cltG(1024,0);
+                std::vector<uchar> cltB(1024,0);
+                for(size_t i=0;i<1024;++i){
+                    cdfR += histogramR[i]; cltR[i] = static_cast<uchar>(cdfR*255);
+                    cdfG += histogramG[i]; cltG[i] = static_cast<uchar>(cdfG*255);
+                    cdfB += histogramB[i]; cltB[i] = static_cast<uchar>(cdfB*255);
+                }
+                // 输出RGBA图像
+                for(int y = 0;y<nYSize;++y){
+                    for(int x=0; x<nXSize;++x){
+                        uchar* pPixel = pOut + (y*nXSize+x)*4;
+
+                        double valueR = pRBuffer[y*nXSize+x];
+                        double valueG = pGBuffer[y*nXSize+x];
+                        double valueB = pBBuffer[y*nXSize+x];
+                        // 判断是否是无效像素
+                        if(valueR == 0.0 && valueG == 0.0 && valueB == 0.0){
+                            pPixel[3] = 0.0; continue;
+                        }
+                        pPixel[0] = cltR[std::clamp<int>(0,((valueR-dfRMin)*1024/(dfRMax-dfRMin)),1023)];
+                        pPixel[1] = cltG[std::clamp<int>(0,((valueG-dfGMin)*1024/(dfGMax-dfGMin)),1023)];
+                        pPixel[2] = cltB[std::clamp<int>(0,((valueB-dfBMin)*1024/(dfGMax-dfBMin)),1023)];
+                        pPixel[3] = 255;
+                    }
+                }
+            }
+            else if(Alg == QStringLiteral("直方图规定化(正态分布)")){
+                // 直方图规定化即以一个给定的直方图来替代原图的直方图
+                // 这里直接用正态分布概率密度曲线（高斯曲线）来替代
+                // 计算三个波段的平均值和标准差
+                double dfRMean = dfRSum / nPixelCount;
+                double dfGMean = dfGSum / nPixelCount;
+                double dfBMean = dfBSum / nPixelCount;
+                double dfRStddev = 0.0, dfGStddev = 0.0, dfBStddev = 0.0;
+                for(int i=0;i<nXSize*nYSize;++i){
+                    double valueR = pRBuffer[i];
+                    double valueG = pGBuffer[i];
+                    double valueB = pBBuffer[i];
+                    if(valueR !=0.0 || valueG != 0.0 || valueB != 0.0){
+                       dfRStddev += (valueR - dfRMean)*(valueR - dfRMean);
+                       dfGStddev += (valueG - dfGMean)*(valueG - dfGMean);
+                       dfBStddev += (valueB - dfBMean)*(valueB - dfBMean);
+                    }
+                }
+                dfRStddev = sqrt(dfRStddev/nPixelCount);
+                dfGStddev = sqrt(dfGStddev/nPixelCount);
+                dfBStddev = sqrt(dfBStddev/nPixelCount);
+
+                // 根据三个波段的平均值和标准差生成直方图(概率值)
+                std::vector<double> histogramR(1024,0);
+                std::vector<double> histogramG(1024,0);
+                std::vector<double> histogramB(1024,0);
+                for(size_t i=0;i<1024;++i){
+                    histogramR[i] = std::normpdf(i, dfRMean, dfRStddev);
+                    histogramG[i] = std::normpdf(i, dfGMean, dfGStddev);
+                    histogramB[i] = std::normpdf(i, dfBMean, dfBStddev);
+                }
+                // 计算颜色表(计算1024个灰度级别，按出现概率映射的0-255的值)
+                // 颜色值重新映射后再计算直方图，应该是符合正态分布概率密度曲线的
                 double cdfR = 0, cdfB = 0, cdfG = 0;
                 std::vector<uchar> cltR(1024,0);    // color lookup table
                 std::vector<uchar> cltG(1024,0);
