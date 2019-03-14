@@ -44,8 +44,10 @@ unix:!macx {
 else:win32-g++ {
     INCLUDEPATH += C:/msys64/mingw64/inlude
     LIBS += -L/mingw64/lib/ -lgdal
+    # 拷贝所需动态库
+    # ldd VisualEffect.exe |grep /mingw64/bin/|awk '{print $3}'|xargs -I{} cp {} ./
 }
 else:win32:!win32-g++ {
-    INCLUDEPATH += D:/work_code/unispace_library/3rd/gdal/include
+    INCLUDEPATH += $$PWD/3rd/gdal/include
     LIBS += -L$$PWD/../../ -lgdal_i
 }
