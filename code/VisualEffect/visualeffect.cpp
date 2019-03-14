@@ -102,7 +102,7 @@ VisualEffect::VisualEffect(QWidget *parent)
         QString filename = QFileDialog::getOpenFileName(this,
                                                         QStringLiteral("打开影像文件"),
                                                         QStringLiteral("."),
-                                                        QStringLiteral("Images (*.tif *.tiff *.img)"));
+                                                        QStringLiteral("Images (*.tif *.tiff *.img *.jpg *.jpeg)"));
         if(filename.isEmpty()){
             return;
         }
@@ -117,9 +117,9 @@ VisualEffect::VisualEffect(QWidget *parent)
         // 获取波段信息
         int nBands = GDALGetRasterCount(hDset);
         if(nBands==0){ return; }
-        pSBoxR->setRange(1,nBands);
-        pSBoxG->setRange(1,nBands);
-        pSBoxB->setRange(1,nBands);
+        pSBoxR->setRange(1,nBands); pSBoxR->setValue(1);
+        pSBoxG->setRange(1,nBands); pSBoxG->setValue(std::min(2,nBands));
+        pSBoxB->setRange(1,nBands); pSBoxB->setValue(std::min(3,nBands));
 
         // 获取影像大小信息
         int nXSize = GDALGetRasterXSize(hDset);
@@ -208,6 +208,21 @@ VisualEffect::VisualEffect(QWidget *parent)
                 if(v != 0.0){ dfBMin = std::min(dfRMin,v); dfBMax = std::max(dfRMax,v); }
                 // 三个都为0，才认为像素无效
                 if(isValid){ nPixelCount += 1; }
+
+                // double valueR = pRBuffer[i];
+                // double valueG = pGBuffer[i];
+                // double valueB = pBBuffer[i];
+                // 三个都为0，才认为像素无效
+                // if(valueR == 0.0 && valueG == 0.0 && valueB == 0.0){
+                //     continue;
+                // }
+                // nPixelCount += 1;
+                // dfRSum += valueR;
+                // dfGSum += valueG;
+                // dfBSum += valueB;
+                // dfRMin = std::min(dfRMin,valueR); dfRMax = std::max(dfRMax,valueR);
+                // dfGMin = std::min(dfGMin,valueG); dfGMax = std::max(dfGMax,valueG);
+                // dfBMin = std::min(dfBMin,valueB); dfBMax = std::max(dfBMax,valueB);
             }
 
             QImage image(nXSize,nYSize,QImage::Format_RGBA8888);
@@ -237,11 +252,11 @@ VisualEffect::VisualEffect(QWidget *parent)
             }
             else if(Alg == QStringLiteral("2%线性拉伸")) {
                 double diff = dfRMax-dfRMin;
-                dfRMin += diff * 0.10; dfRMax -= diff * 0.10;
+                dfRMin += diff * 0.02; dfRMax -= diff * 0.02;
                 diff = dfGMax-dfGMin;
-                dfGMin += diff * 0.10; dfGMax -= diff * 0.10;
+                dfGMin += diff * 0.02; dfGMax -= diff * 0.02;
                 diff = dfBMax-dfBMin;
-                dfBMin += diff * 0.10; dfBMax -= diff * 0.10;
+                dfBMin += diff * 0.02; dfBMax -= diff * 0.02;
 
                 for(int y = 0;y<nYSize;++y){
                     for(int x=0; x<nXSize;++x){
@@ -256,9 +271,9 @@ VisualEffect::VisualEffect(QWidget *parent)
                         }
                         // 相当于0-255线性映射到[最小值+2%,最大值-%2]
                         // 这里应该考虑像素值与最小值相减为负数的情况，已经映射值超过255的情况
-                        pPixel[0] = static_cast<uchar>(std::min(255.0,(std::max((valueR -dfRMin),0.0)/(dfRMax-dfRMin) *255.0)));
-                        pPixel[1] = static_cast<uchar>(std::min(255.0,(std::max((valueG -dfGMin),0.0)/(dfGMax-dfGMin) *255.0)));
-                        pPixel[2] = static_cast<uchar>(std::min(255.0,(std::max((valueB -dfBMin),0.0)/(dfBMax-dfBMin) *255.0)));
+                        pPixel[0] = static_cast<uchar>(std::clamp(0.0, ((valueR -dfRMin)/(dfRMax-dfRMin) *255.0),255.0));
+                        pPixel[1] = static_cast<uchar>(std::clamp(0.0, ((valueG -dfGMin)/(dfGMax-dfGMin) *255.0),255.0));
+                        pPixel[2] = static_cast<uchar>(std::clamp(0.0, ((valueB -dfBMin)/(dfBMax-dfBMin) *255.0),255.0));
                         pPixel[3] = 255;
                         // limage.setPixelColor(x,y,QColor(r,g,b));
                     }
@@ -302,7 +317,6 @@ VisualEffect::VisualEffect(QWidget *parent)
                 for(int y = 0;y<nYSize;++y){
                     for(int x=0; x<nXSize;++x){
                         uchar* pPixel = pOut + (y*nXSize+x)*4;
-
                         double valueR = pRBuffer[y*nXSize+x];
                         double valueG = pGBuffer[y*nXSize+x];
                         double valueB = pBBuffer[y*nXSize+x];
@@ -338,32 +352,42 @@ VisualEffect::VisualEffect(QWidget *parent)
                 dfRStddev = sqrt(dfRStddev/nPixelCount);
                 dfGStddev = sqrt(dfGStddev/nPixelCount);
                 dfBStddev = sqrt(dfBStddev/nPixelCount);
+                // 将各个波段的最大最小值限制在均值左右各3倍标准差的范围内
+                dfRMin = dfRMean - dfRStddev*2.5; dfRMax = dfRMean + dfRStddev*2.5;
+                dfGMin = dfGMean - dfGStddev*2.5; dfGMax = dfGMean + dfGStddev*2.5;
+                dfBMin = dfBMean - dfBStddev*2.5; dfBMax = dfBMean + dfBStddev*2.5;
+                double dfRSpace = (dfRMax - dfRMin) / 1023.0;
+                double dfGSpace = (dfGMax - dfGMin) / 1023.0;
+                double dfBSpace = (dfBMax - dfBMin) / 1023.0;
 
                 // 根据三个波段的平均值和标准差生成直方图(概率值)
                 std::vector<double> histogramR(1024,0);
                 std::vector<double> histogramG(1024,0);
                 std::vector<double> histogramB(1024,0);
                 for(size_t i=0;i<1024;++i){
-                    histogramR[i] = std::normpdf(i, dfRMean, dfRStddev);
-                    histogramG[i] = std::normpdf(i, dfGMean, dfGStddev);
-                    histogramB[i] = std::normpdf(i, dfBMean, dfBStddev);
+                    histogramR[i] = std::normpdf(dfRMin + i*dfRSpace, dfRMean, dfRStddev);
+                    histogramG[i] = std::normpdf(dfGMin + i*dfGSpace, dfGMean, dfGStddev);
+                    histogramB[i] = std::normpdf(dfBMin + i*dfBSpace, dfBMean, dfBStddev);
                 }
                 // 计算颜色表(计算1024个灰度级别，按出现概率映射的0-255的值)
                 // 颜色值重新映射后再计算直方图，应该是符合正态分布概率密度曲线的
+                // 需要计算归化概率累计值到[0,255]区间的 比率系数=255/概率值总和
+                double sumHistR = std::accumulate(histogramR.begin(),histogramR.end(),0.0);
+                double sumHistG = std::accumulate(histogramG.begin(),histogramG.end(),0.0);
+                double sumHistB = std::accumulate(histogramB.begin(),histogramB.end(),0.0);
                 double cdfR = 0, cdfB = 0, cdfG = 0;
                 std::vector<uchar> cltR(1024,0);    // color lookup table
                 std::vector<uchar> cltG(1024,0);
                 std::vector<uchar> cltB(1024,0);
                 for(size_t i=0;i<1024;++i){
-                    cdfR += histogramR[i]; cltR[i] = static_cast<uchar>(cdfR*255);
-                    cdfG += histogramG[i]; cltG[i] = static_cast<uchar>(cdfG*255);
-                    cdfB += histogramB[i]; cltB[i] = static_cast<uchar>(cdfB*255);
+                    cdfR += histogramR[i]; cltR[i] = static_cast<uchar>(cdfR*255/sumHistR);
+                    cdfG += histogramG[i]; cltG[i] = static_cast<uchar>(cdfG*255/sumHistG);
+                    cdfB += histogramB[i]; cltB[i] = static_cast<uchar>(cdfB*255/sumHistB);
                 }
                 // 输出RGBA图像
                 for(int y = 0;y<nYSize;++y){
                     for(int x=0; x<nXSize;++x){
                         uchar* pPixel = pOut + (y*nXSize+x)*4;
-
                         double valueR = pRBuffer[y*nXSize+x];
                         double valueG = pGBuffer[y*nXSize+x];
                         double valueB = pBBuffer[y*nXSize+x];
@@ -371,9 +395,9 @@ VisualEffect::VisualEffect(QWidget *parent)
                         if(valueR == 0.0 && valueG == 0.0 && valueB == 0.0){
                             pPixel[3] = 0.0; continue;
                         }
-                        pPixel[0] = cltR[std::clamp<int>(0,((valueR-dfRMin)*1024/(dfRMax-dfRMin)),1023)];
-                        pPixel[1] = cltG[std::clamp<int>(0,((valueG-dfGMin)*1024/(dfGMax-dfGMin)),1023)];
-                        pPixel[2] = cltB[std::clamp<int>(0,((valueB-dfBMin)*1024/(dfGMax-dfBMin)),1023)];
+                        pPixel[0] = cltR[std::clamp<int>(0,((valueR-dfRMin)/dfRSpace),1023)];
+                        pPixel[1] = cltG[std::clamp<int>(0,((valueG-dfGMin)/dfGSpace),1023)];
+                        pPixel[2] = cltB[std::clamp<int>(0,((valueB-dfBMin)/dfBSpace),1023)];
                         pPixel[3] = 255;
                     }
                 }
